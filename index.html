@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Facturas S21</title>
+    <!-- Cargamos librería ligera para QR -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        :root {
+            --primary: #0d6efd;
+            --success: #198754;
+            --bg: #f8f9fa;
+            --text: #212529;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        h2 { text-align: center; margin-bottom: 20px; }
+
+        #reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: black;
+        }
+
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #e9ecef;
+            word-break: break-all;
+            min-height: 50px;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary { background-color: var(--primary); color: white; }
+        .btn-success { background-color: var(--success); color: white; }
+        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        /* Spinner de carga simple */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            display: none;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📸 Escáner de Facturas</h2>
+    
+    <!-- Visor de Cámara -->
+    <div id="reader"></div>
+
+    <!-- Resultado del Escaneo -->
+    <div class="status-box" id="result">
+        Esperando escaneo...
+    </div>
+
+    <!-- Botonera -->
+    <button id="sendBtn" class="btn btn-success" disabled onclick="sendData()">
+        <span class="spinner" id="spinner"></span>
+        Enviar a Google Sheets
+    </button>
+    
+    <button id="resetBtn" class="btn btn-primary" style="display:none;" onclick="resetScanner()">
+        Escanear Siguiente
+    </button>
+</div>
+
+<script>
+    // ================= CONFIGURACIÓN =================
+    // PEGA AQUÍ TU URL DE APPS SCRIPT
+    // CORRECCIÓN: Se han añadido comillas simples alrededor de la URL
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyr7OmLEZFBZUmj1lCpPUoJACA8Jd33iJw10GSX9SKCnNVCWKwGgHbkXzmwyqwenV4/exec'; 
+    // =================================================
+
+    const html5QrCode = new Html5Qrcode("reader");
+    const resultBox = document.getElementById('result');
+    const sendBtn = document.getElementById('sendBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const spinner = document.getElementById('spinner');
+
+    let currentQrData = null;
+    let isScanning = true;
+
+    // Configuración de la cámara (trasera preferida)
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    
+    function startScanner() {
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            onScanSuccess, 
+            onScanFailure
+        ).catch(err => {
+            console.error("Error iniciando cámara", err);
+            resultBox.innerText = "Error: Permiso de cámara denegado.";
+        });
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+        if (!isScanning) return; // Evitar múltiples lecturas
+
+        // Detener escaneo temporalmente
+        html5QrCode.pause();
+        isScanning = false;
+
+        // Mostrar datos
+        currentQrData = decodedText;
+        resultBox.innerText = decodedText;
+        resultBox.style.backgroundColor = "#d1e7dd"; // Verde claro
+        resultBox.style.borderColor = "#badbcc";
+
+        // Habilitar botón de envío
+        sendBtn.disabled = false;
+        // Opcional: Vibrar si el dispositivo lo soporta
+        if (navigator.vibrate) navigator.vibrate(200);
+    }
+
+    function onScanFailure(error) {
+        // Fallos de lectura comunes, no hacemos nada para no saturar log
+    }
+
+    function sendData() {
+        if (!currentQrData) return;
+        if (GOOGLE_SCRIPT_URL === 'TU_URL_DE_APPS_SCRIPT_AQUI') {
+            alert("⚠️ Error: No has configurado la URL del Script en el código.");
+            return;
+        }
+
+        // UI Update: Cargando
+        sendBtn.disabled = true;
+        spinner.style.display = "inline-block";
+        sendBtn.childNodes[2].textContent = " Enviando..."; // Hack para mantener texto
+
+        // Usamos fetch con 'no-cors' si hay problemas, o método text/plain para evitar pre-flight
+        fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Importante para scripts simples de Google
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+            },
+            body: JSON.stringify({ qr_content: currentQrData })
+        })
+        .then(response => {
+            // Con no-cors no podemos leer la respuesta JSON, asumimos éxito si no hay error de red
+            alert("✅ Factura registrada con éxito");
+            showReset();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("❌ Error al enviar. Revisa tu conexión.");
+            sendBtn.disabled = false;
+        })
+        .finally(() => {
+            spinner.style.display = "none";
+            sendBtn.childNodes[2].textContent = "Enviar a Google Sheets";
+        });
+    }
+
+    function showReset() {
+        sendBtn.style.display = 'none';
+        resetBtn.style.display = 'block';
+    }
+
+    function resetScanner() {
+        // UI Reset
+        currentQrData = null;
+        resultBox.innerText = "Esperando escaneo...";
+        resultBox.style.backgroundColor = "#e9ecef";
+        
+        sendBtn.style.display = 'block';
+        sendBtn.disabled = true;
+        resetBtn.style.display = 'none';
+
+        // Reanudar cámara
+        html5QrCode.resume();
+        isScanning = true;
+    }
+
+    // Iniciar al cargar
+    document.addEventListener('DOMContentLoaded', startScanner);
+
+</script>
+</body>
+</html>
