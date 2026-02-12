@@ -12,6 +12,7 @@
             --success: #198754;
             --bg: #f8f9fa;
             --text: #212529;
+            --error: #dc3545;
         }
 
         body {
@@ -41,6 +42,7 @@
             border-radius: 8px;
             overflow: hidden;
             background-color: black;
+            position: relative;
         }
 
         .status-box {
@@ -51,6 +53,12 @@
             background-color: #e9ecef;
             word-break: break-all;
             min-height: 50px;
+        }
+
+        .status-error {
+            background-color: #f8d7da;
+            color: #842029;
+            border-color: #f5c6cb;
         }
 
         .btn {
@@ -70,7 +78,6 @@
         .btn-success { background-color: var(--success); color: white; }
         .btn:disabled { background-color: #ccc; cursor: not-allowed; }
 
-        /* Spinner de carga simple */
         .spinner {
             display: inline-block;
             width: 20px;
@@ -91,15 +98,12 @@
 <div class="container">
     <h2>📸 Escáner de Facturas</h2>
     
-    <!-- Visor de Cámara -->
     <div id="reader"></div>
 
-    <!-- Resultado del Escaneo -->
     <div class="status-box" id="result">
-        Esperando escaneo...
+        Iniciando cámara...
     </div>
 
-    <!-- Botonera -->
     <button id="sendBtn" class="btn btn-success" disabled onclick="sendData()">
         <span class="spinner" id="spinner"></span>
         Enviar a Google Sheets
@@ -112,9 +116,8 @@
 
 <script>
     // ================= CONFIGURACIÓN =================
-    // PEGA AQUÍ TU URL DE APPS SCRIPT
-    // CORRECCIÓN: Se han añadido comillas simples alrededor de la URL
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzwV3NMrfkKrykUKk2jczRdeJYVYsJVfih76xeE5J3m4dHewe5STj1y_UzeAVI8RJk/exec'; 
+    // URL de Apps Script
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw7-hTCHi7u_xlpmcRojCUgfZo5QkqufmGJed_LAI1PCqAzstSEQQ-iEuwtImAilq0/exec'; 
     // =================================================
 
     const html5QrCode = new Html5Qrcode("reader");
@@ -126,10 +129,16 @@
     let currentQrData = null;
     let isScanning = true;
 
-    // Configuración de la cámara (trasera preferida)
+    // Configuración de la cámara
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
     function startScanner() {
+        // Validación de Seguridad HTTPS
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            showError("⚠️ BLOQUEO DE SEGURIDAD: Chrome requiere HTTPS para usar la cámara. No abras el archivo directamente como archivo local. Súbelo a GitHub Pages o Netlify.");
+            return;
+        }
+
         html5QrCode.start(
             { facingMode: "environment" }, 
             config, 
@@ -137,56 +146,54 @@
             onScanFailure
         ).catch(err => {
             console.error("Error iniciando cámara", err);
-            resultBox.innerText = "Error: Permiso de cámara denegado.";
+            showError("❌ Error de Cámara: Asegúrate de dar permisos en el navegador y que ninguna otra app la esté usando.");
         });
     }
 
     function onScanSuccess(decodedText, decodedResult) {
-        if (!isScanning) return; // Evitar múltiples lecturas
+        if (!isScanning) return; 
 
-        // Detener escaneo temporalmente
         html5QrCode.pause();
         isScanning = false;
 
-        // Mostrar datos
         currentQrData = decodedText;
         resultBox.innerText = decodedText;
-        resultBox.style.backgroundColor = "#d1e7dd"; // Verde claro
+        resultBox.classList.remove("status-error");
+        resultBox.style.backgroundColor = "#d1e7dd"; 
         resultBox.style.borderColor = "#badbcc";
+        resultBox.style.color = "#0f5132";
 
-        // Habilitar botón de envío
         sendBtn.disabled = false;
-        // Opcional: Vibrar si el dispositivo lo soporta
         if (navigator.vibrate) navigator.vibrate(200);
     }
 
     function onScanFailure(error) {
-        // Fallos de lectura comunes, no hacemos nada para no saturar log
+        // Ignoramos errores de "no QR found" para limpiar la consola
+    }
+
+    function showError(msg) {
+        resultBox.innerText = msg;
+        resultBox.classList.add("status-error");
+        // Intentar limpiar el visor si falló
+        try { html5QrCode.stop(); } catch(e) {}
     }
 
     function sendData() {
         if (!currentQrData) return;
-        if (GOOGLE_SCRIPT_URL === 'TU_URL_DE_APPS_SCRIPT_AQUI') {
-            alert("⚠️ Error: No has configurado la URL del Script en el código.");
-            return;
-        }
-
-        // UI Update: Cargando
+        
         sendBtn.disabled = true;
         spinner.style.display = "inline-block";
-        sendBtn.childNodes[2].textContent = " Enviando..."; // Hack para mantener texto
+        sendBtn.childNodes[2].textContent = " Enviando...";
 
-        // Usamos fetch con 'no-cors' si hay problemas, o método text/plain para evitar pre-flight
         fetch(GOOGLE_SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors', // Importante para scripts simples de Google
+            mode: 'no-cors',
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8',
             },
             body: JSON.stringify({ qr_content: currentQrData })
         })
         .then(response => {
-            // Con no-cors no podemos leer la respuesta JSON, asumimos éxito si no hay error de red
             alert("✅ Factura registrada con éxito");
             showReset();
         })
@@ -207,21 +214,20 @@
     }
 
     function resetScanner() {
-        // UI Reset
         currentQrData = null;
-        resultBox.innerText = "Esperando escaneo...";
+        resultBox.innerText = "Escaneando...";
+        resultBox.classList.remove("status-error");
         resultBox.style.backgroundColor = "#e9ecef";
+        resultBox.style.color = "#212529";
         
         sendBtn.style.display = 'block';
         sendBtn.disabled = true;
         resetBtn.style.display = 'none';
 
-        // Reanudar cámara
         html5QrCode.resume();
         isScanning = true;
     }
 
-    // Iniciar al cargar
     document.addEventListener('DOMContentLoaded', startScanner);
 
 </script>
