@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -32,10 +33,13 @@
             background: white;
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
-        h2 { text-align: center; margin-bottom: 20px; }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
 
         #reader {
             width: 100%;
@@ -74,15 +78,26 @@
             transition: opacity 0.2s;
         }
 
-        .btn-primary { background-color: var(--primary); color: white; }
-        .btn-success { background-color: var(--success); color: white; }
-        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-success {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
 
         .spinner {
             display: inline-block;
             width: 20px;
             height: 20px;
-            border: 3px solid rgba(255,255,255,.3);
+            border: 3px solid rgba(255, 255, 255, .3);
             border-radius: 50%;
             border-top-color: #fff;
             animation: spin 1s ease-in-out infinite;
@@ -90,146 +105,154 @@
             display: none;
         }
 
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
+
 <body>
 
-<div class="container">
-    <h2>📸 Escáner de Facturas</h2>
-    
-    <div id="reader"></div>
+    <div class="container">
+        <img src="../Andromeda Main/assets/images/logo_andromeda.png" alt="Logo Andrómeda">
+        <h2>Andrómeda Proyectos y Construcciones SRL</h2>
+        <h2>📸 Escáner de Facturas</h2>
 
-    <div class="status-box" id="result">
-        Iniciando cámara...
+        <div id="reader"></div>
+
+        <div class="status-box" id="result">
+            Iniciando cámara...
+        </div>
+
+        <button id="sendBtn" class="btn btn-success" disabled onclick="sendData()">
+            <span class="spinner" id="spinner"></span>
+            Enviar a Google Sheets
+        </button>
+
+        <button id="resetBtn" class="btn btn-primary" style="display:none;" onclick="resetScanner()">
+            Escanear Siguiente
+        </button>
     </div>
 
-    <button id="sendBtn" class="btn btn-success" disabled onclick="sendData()">
-        <span class="spinner" id="spinner"></span>
-        Enviar a Google Sheets
-    </button>
-    
-    <button id="resetBtn" class="btn btn-primary" style="display:none;" onclick="resetScanner()">
-        Escanear Siguiente
-    </button>
-</div>
+    <script>
+        // ================= CONFIGURACIÓN =================
+        // URL de Apps Script
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw7-hTCHi7u_xlpmcRojCUgfZo5QkqufmGJed_LAI1PCqAzstSEQQ-iEuwtImAilq0/exec';
+        // =================================================
 
-<script>
-    // ================= CONFIGURACIÓN =================
-    // URL de Apps Script
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw7-hTCHi7u_xlpmcRojCUgfZo5QkqufmGJed_LAI1PCqAzstSEQQ-iEuwtImAilq0/exec'; 
-    // =================================================
+        const html5QrCode = new Html5Qrcode("reader");
+        const resultBox = document.getElementById('result');
+        const sendBtn = document.getElementById('sendBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const spinner = document.getElementById('spinner');
 
-    const html5QrCode = new Html5Qrcode("reader");
-    const resultBox = document.getElementById('result');
-    const sendBtn = document.getElementById('sendBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const spinner = document.getElementById('spinner');
+        let currentQrData = null;
+        let isScanning = true;
 
-    let currentQrData = null;
-    let isScanning = true;
+        // Configuración de la cámara
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-    // Configuración de la cámara
-    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-    
-    function startScanner() {
-        // Validación de Seguridad HTTPS
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-            showError("⚠️ BLOQUEO DE SEGURIDAD: Chrome requiere HTTPS para usar la cámara. No abras el archivo directamente como archivo local. Súbelo a GitHub Pages o Netlify.");
-            return;
+        function startScanner() {
+            // Validación de Seguridad HTTPS
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                showError("⚠️ BLOQUEO DE SEGURIDAD: Chrome requiere HTTPS para usar la cámara. No abras el archivo directamente como archivo local. Súbelo a GitHub Pages o Netlify.");
+                return;
+            }
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).catch(err => {
+                console.error("Error iniciando cámara", err);
+                showError("❌ Error de Cámara: Asegúrate de dar permisos en el navegador y que ninguna otra app la esté usando.");
+            });
         }
 
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            config, 
-            onScanSuccess, 
-            onScanFailure
-        ).catch(err => {
-            console.error("Error iniciando cámara", err);
-            showError("❌ Error de Cámara: Asegúrate de dar permisos en el navegador y que ninguna otra app la esté usando.");
-        });
-    }
+        function onScanSuccess(decodedText, decodedResult) {
+            if (!isScanning) return;
 
-    function onScanSuccess(decodedText, decodedResult) {
-        if (!isScanning) return; 
+            html5QrCode.pause();
+            isScanning = false;
 
-        html5QrCode.pause();
-        isScanning = false;
+            currentQrData = decodedText;
+            resultBox.innerText = decodedText;
+            resultBox.classList.remove("status-error");
+            resultBox.style.backgroundColor = "#d1e7dd";
+            resultBox.style.borderColor = "#badbcc";
+            resultBox.style.color = "#0f5132";
 
-        currentQrData = decodedText;
-        resultBox.innerText = decodedText;
-        resultBox.classList.remove("status-error");
-        resultBox.style.backgroundColor = "#d1e7dd"; 
-        resultBox.style.borderColor = "#badbcc";
-        resultBox.style.color = "#0f5132";
-
-        sendBtn.disabled = false;
-        if (navigator.vibrate) navigator.vibrate(200);
-    }
-
-    function onScanFailure(error) {
-        // Ignoramos errores de "no QR found" para limpiar la consola
-    }
-
-    function showError(msg) {
-        resultBox.innerText = msg;
-        resultBox.classList.add("status-error");
-        // Intentar limpiar el visor si falló
-        try { html5QrCode.stop(); } catch(e) {}
-    }
-
-    function sendData() {
-        if (!currentQrData) return;
-        
-        sendBtn.disabled = true;
-        spinner.style.display = "inline-block";
-        sendBtn.childNodes[2].textContent = " Enviando...";
-
-        fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-            },
-            body: JSON.stringify({ qr_content: currentQrData })
-        })
-        .then(response => {
-            alert("✅ Factura registrada con éxito");
-            showReset();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("❌ Error al enviar. Revisa tu conexión.");
             sendBtn.disabled = false;
-        })
-        .finally(() => {
-            spinner.style.display = "none";
-            sendBtn.childNodes[2].textContent = "Enviar a Google Sheets";
-        });
-    }
+            if (navigator.vibrate) navigator.vibrate(200);
+        }
 
-    function showReset() {
-        sendBtn.style.display = 'none';
-        resetBtn.style.display = 'block';
-    }
+        function onScanFailure(error) {
+            // Ignoramos errores de "no QR found" para limpiar la consola
+        }
 
-    function resetScanner() {
-        currentQrData = null;
-        resultBox.innerText = "Escaneando...";
-        resultBox.classList.remove("status-error");
-        resultBox.style.backgroundColor = "#e9ecef";
-        resultBox.style.color = "#212529";
-        
-        sendBtn.style.display = 'block';
-        sendBtn.disabled = true;
-        resetBtn.style.display = 'none';
+        function showError(msg) {
+            resultBox.innerText = msg;
+            resultBox.classList.add("status-error");
+            // Intentar limpiar el visor si falló
+            try { html5QrCode.stop(); } catch (e) { }
+        }
 
-        html5QrCode.resume();
-        isScanning = true;
-    }
+        function sendData() {
+            if (!currentQrData) return;
 
-    document.addEventListener('DOMContentLoaded', startScanner);
+            sendBtn.disabled = true;
+            spinner.style.display = "inline-block";
+            sendBtn.childNodes[2].textContent = " Enviando...";
 
-</script>
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                },
+                body: JSON.stringify({ qr_content: currentQrData })
+            })
+                .then(response => {
+                    alert("✅ Factura registrada con éxito");
+                    showReset();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("❌ Error al enviar. Revisa tu conexión.");
+                    sendBtn.disabled = false;
+                })
+                .finally(() => {
+                    spinner.style.display = "none";
+                    sendBtn.childNodes[2].textContent = "Enviar a Google Sheets";
+                });
+        }
+
+        function showReset() {
+            sendBtn.style.display = 'none';
+            resetBtn.style.display = 'block';
+        }
+
+        function resetScanner() {
+            currentQrData = null;
+            resultBox.innerText = "Escaneando...";
+            resultBox.classList.remove("status-error");
+            resultBox.style.backgroundColor = "#e9ecef";
+            resultBox.style.color = "#212529";
+
+            sendBtn.style.display = 'block';
+            sendBtn.disabled = true;
+            resetBtn.style.display = 'none';
+
+            html5QrCode.resume();
+            isScanning = true;
+        }
+
+        document.addEventListener('DOMContentLoaded', startScanner);
+
+    </script>
 </body>
+
 </html>
